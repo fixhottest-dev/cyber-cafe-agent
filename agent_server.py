@@ -1,7 +1,7 @@
 import os
 from fastapi import FastAPI
 from pydantic import BaseModel
-import google.generativeai as genai
+from google import genai
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
@@ -10,19 +10,24 @@ from selenium.webdriver.chrome.service import Service
 
 app = FastAPI(title="AI Cyber Cafe Agent Backend")
 
+# Initialize Gemini Client with API Key
 GENAI_API_KEY = os.getenv("GEMINI_API_KEY", "YOUR_GEMINI_API_KEY")
-genai.configure(api_key=GENAI_API_KEY)
+ai_client = genai.Client(api_key=GENAI_API_KEY)
 
 class UserTaskRequest(BaseModel):
     user_query: str
     user_data: dict
+
+@app.get("/")
+def home():
+    return {"status": "online", "message": "AI Cyber Cafe Backend Server is Running!"}
 
 @app.post("/execute-agent")
 def execute_task(request: UserTaskRequest):
     query = request.user_query
     user_info = request.user_data
 
-    # Target URL Resolution
+    # Dynamic URL Matching
     target_url = "https://sewasetu.assam.gov.in"
     q_lower = query.lower()
 
@@ -33,7 +38,7 @@ def execute_task(request: UserTaskRequest):
     elif "aadhaar" in q_lower or "uidai" in q_lower:
         target_url = "https://myaadhaar.uidai.gov.in"
 
-    # Headless Chrome Browser Setup for Render
+    # Headless Browser Automation
     chrome_options = Options()
     chrome_options.add_argument("--headless")
     chrome_options.add_argument("--no-sandbox")
@@ -45,7 +50,7 @@ def execute_task(request: UserTaskRequest):
         driver.get(target_url)
         page_title = driver.title
 
-        # Scan text inputs and auto-fill
+        # Auto-fill detected form inputs
         inputs = driver.find_elements(By.TAG_NAME, "input")
         filled_count = 0
 
