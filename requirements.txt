@@ -1,5 +1,6 @@
 fastapi
 uvicorn
-playwright
+selenium
+webdriver-manager
 google-generativeai
 pydantic
