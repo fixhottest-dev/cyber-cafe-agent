@@ -1,26 +1,28 @@
 import os
-import asyncio
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from pydantic import BaseModel
-from playwright.async_api import async_playwright
 import google.generativeai as genai
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+from webdriver_manager.chrome import ChromeDriverManager
+from selenium.webdriver.chrome.service import Service
 
 app = FastAPI(title="AI Cyber Cafe Agent Backend")
 
-# Set your Gemini API Key in Environment or hardcode here
 GENAI_API_KEY = os.getenv("GEMINI_API_KEY", "YOUR_GEMINI_API_KEY")
 genai.configure(api_key=GENAI_API_KEY)
 
 class UserTaskRequest(BaseModel):
-    user_query: str      # E.g., "Assam me income certificate apply karna hai"
-    user_data: dict      # E.g., {"name": "Dilwar Hussain", "phone": "9876543210"}
+    user_query: str
+    user_data: dict
 
 @app.post("/execute-agent")
-async def execute_task(request: UserTaskRequest):
+def execute_task(request: UserTaskRequest):
     query = request.user_query
     user_info = request.user_data
 
-    # --- PHASE 1: AI Brain Intent & URL Resolver ---
+    # Target URL Resolution
     target_url = "https://sewasetu.assam.gov.in"
     q_lower = query.lower()
 
@@ -30,51 +32,55 @@ async def execute_task(request: UserTaskRequest):
         target_url = "https://www.onlineservices.nsdl.com"
     elif "aadhaar" in q_lower or "uidai" in q_lower:
         target_url = "https://myaadhaar.uidai.gov.in"
-    elif "income" in q_lower or "caste" in q_lower or "prc" in q_lower or "sewa setu" in q_lower:
-        target_url = "https://sewasetu.assam.gov.in"
 
-    # --- PHASE 2: Cloud Playwright Automation ---
-    async with async_playwright() as p:
-        # Development me headless=False karke live browser dekh sakte ho
-        browser = await p.chromium.launch(headless=True)
-        page = await browser.new_page()
+    # Headless Chrome Browser Setup for Render
+    chrome_options = Options()
+    chrome_options.add_argument("--headless")
+    chrome_options.add_argument("--no-sandbox")
+    chrome_options.add_argument("--disable-dev-shm-usage")
+    chrome_options.add_argument("--disable-gpu")
 
-        try:
-            await page.goto(target_url, timeout=60000)
-            page_title = await page.title()
+    try:
+        driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
+        driver.get(target_url)
+        page_title = driver.title
 
-            # Input fields scan & Auto-fill
-            inputs = await page.query_selector_all("input[type='text'], input[type='tel']")
-            filled_count = 0
+        # Scan text inputs and auto-fill
+        inputs = driver.find_elements(By.TAG_NAME, "input")
+        filled_count = 0
 
-            for input_field in inputs:
-                name_attr = (await input_field.get_attribute("name") or "").lower()
-                placeholder = (await input_field.get_attribute("placeholder") or "").lower()
+        for input_field in inputs:
+            try:
+                field_type = input_field.get_attribute("type") or ""
+                if field_type in ["text", "tel"]:
+                    name_attr = (input_field.get_attribute("name") or "").lower()
+                    placeholder = (input_field.get_attribute("placeholder") or "").lower()
 
-                if ("name" in name_attr or "name" in placeholder) and "name" in user_info:
-                    await input_field.fill(user_info["name"])
-                    filled_count += 1
-                elif ("phone" in name_attr or "mobile" in placeholder) and "phone" in user_info:
-                    await input_field.fill(user_info["phone"])
-                    filled_count += 1
+                    if ("name" in name_attr or "name" in placeholder) and "name" in user_info:
+                        input_field.send_keys(user_info["name"])
+                        filled_count += 1
+                    elif ("phone" in name_attr or "mobile" in placeholder) and "phone" in user_info:
+                        input_field.send_keys(user_info["phone"])
+                        filled_count += 1
+            except Exception:
+                continue
 
-            await browser.close()
+        driver.quit()
 
-            return {
-                "status": "success",
-                "page_title": page_title,
-                "url": target_url,
-                "fields_autofilled": filled_count,
-                "message": f"AI Agent mapped '{query}' to {page_title} and auto-filled details."
-            }
+        return {
+            "status": "success",
+            "page_title": page_title,
+            "url": target_url,
+            "fields_autofilled": filled_count,
+            "message": f"AI Agent mapped '{query}' to {page_title} and auto-filled details."
+        }
 
-        except Exception as err:
-            await browser.close()
-            return {
-                "status": "error",
-                "url": target_url,
-                "message": f"Execution error: {str(err)}"
-            }
+    except Exception as err:
+        return {
+            "status": "error",
+            "url": target_url,
+            "message": f"Browser error: {str(err)}"
+        }
 
 if __name__ == "__main__":
     import uvicorn
