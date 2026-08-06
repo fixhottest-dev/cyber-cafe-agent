@@ -2,15 +2,9 @@ import os
 from fastapi import FastAPI
 from pydantic import BaseModel
 from google import genai
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.by import By
-from webdriver_manager.chrome import ChromeDriverManager
-from selenium.webdriver.chrome.service import Service
 
 app = FastAPI(title="AI Cyber Cafe Agent Backend")
 
-# Initialize Gemini Client with API Key
 GENAI_API_KEY = os.getenv("GEMINI_API_KEY", "YOUR_GEMINI_API_KEY")
 ai_client = genai.Client(api_key=GENAI_API_KEY)
 
@@ -25,67 +19,42 @@ def home():
 @app.post("/execute-agent")
 def execute_task(request: UserTaskRequest):
     query = request.user_query
-    user_info = request.user_data
-
-    # Dynamic URL Matching
-    target_url = "https://sewasetu.assam.gov.in"
     q_lower = query.lower()
 
-    if "basundhara" in q_lower or "land" in q_lower or "mutation" in q_lower:
+    # Smart Official URL Routing Matrix
+    target_url = ""
+    
+    if "sewa" in q_lower or "income" in q_lower or "prc" in q_lower or "caste" in q_lower:
+        target_url = "https://sewasetu.assam.gov.in"
+    elif "basundhara" in q_lower or "land" in q_lower or "mutation" in q_lower or "jamabandi" in q_lower:
         target_url = "https://basundhara.assam.gov.in"
     elif "pan" in q_lower:
-        target_url = "https://www.onlineservices.nsdl.com"
+        target_url = "https://www.onlineservices.nsdl.com/paam/endUserRegisterContact.html"
     elif "aadhaar" in q_lower or "uidai" in q_lower:
         target_url = "https://myaadhaar.uidai.gov.in"
+    elif "pf" in q_lower or "epf" in q_lower:
+        target_url = "https://unifiedportal-mem.epfindia.gov.in/memberinterface/"
+    else:
+        # Fallback to direct Google Search query if portal is unknown
+        target_url = f"https://www.google.com/search?q={query}+official+website+apply+online"
 
-    # Headless Browser Automation
-    chrome_options = Options()
-    chrome_options.add_argument("--headless")
-    chrome_options.add_argument("--no-sandbox")
-    chrome_options.add_argument("--disable-dev-shm-usage")
-    chrome_options.add_argument("--disable-gpu")
-
+    # Use Gemini AI to generate action instructions for user
+    prompt = f"User wants to do: '{query}'. Give 2-3 short, clear bullet steps in simple Hindi-English on how to proceed on the website."
+    
     try:
-        driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
-        driver.get(target_url)
-        page_title = driver.title
+        response = ai_client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=prompt
+        )
+        ai_instruction = response.text
+    except Exception:
+        ai_instruction = "Website load ho rahi hai. Kripya portal par diye gaye instructions ko follow karein."
 
-        # Auto-fill detected form inputs
-        inputs = driver.find_elements(By.TAG_NAME, "input")
-        filled_count = 0
-
-        for input_field in inputs:
-            try:
-                field_type = input_field.get_attribute("type") or ""
-                if field_type in ["text", "tel"]:
-                    name_attr = (input_field.get_attribute("name") or "").lower()
-                    placeholder = (input_field.get_attribute("placeholder") or "").lower()
-
-                    if ("name" in name_attr or "name" in placeholder) and "name" in user_info:
-                        input_field.send_keys(user_info["name"])
-                        filled_count += 1
-                    elif ("phone" in name_attr or "mobile" in placeholder) and "phone" in user_info:
-                        input_field.send_keys(user_info["phone"])
-                        filled_count += 1
-            except Exception:
-                continue
-
-        driver.quit()
-
-        return {
-            "status": "success",
-            "page_title": page_title,
-            "url": target_url,
-            "fields_autofilled": filled_count,
-            "message": f"AI Agent mapped '{query}' to {page_title} and auto-filled details."
-        }
-
-    except Exception as err:
-        return {
-            "status": "error",
-            "url": target_url,
-            "message": f"Browser error: {str(err)}"
-        }
+    return {
+        "status": "success",
+        "url": target_url,
+        "message": ai_instruction
+    }
 
 if __name__ == "__main__":
     import uvicorn
