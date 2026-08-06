@@ -1,12 +1,11 @@
 import os
 import json
-import re
 from fastapi import FastAPI
 from pydantic import BaseModel
 from google import genai
 from google.genai import types
 
-app = FastAPI(title="Dynamic AI Agent Backend")
+app = FastAPI(title="Conversational AI Agent Backend")
 
 GENAI_API_KEY = os.getenv("GEMINI_API_KEY", "YOUR_GEMINI_API_KEY")
 ai_client = genai.Client(api_key=GENAI_API_KEY)
@@ -17,27 +16,33 @@ class UserTaskRequest(BaseModel):
 
 @app.get("/")
 def home():
-    return {"status": "online", "message": "Truly Autonomous AI Agent Active"}
+    return {"status": "online", "message": "Conversational AI Agent Active"}
 
 @app.post("/execute-agent")
 def execute_task(request: UserTaskRequest):
     query = request.user_query
 
-    # Strict AI Prompt expecting JSON response
+    # Conversational Agent Prompt - Expecting intake reasoning or final action
     prompt = f"""
-    You are an AI Web Navigation Agent.
-    Find the exact direct official working portal URL for Indian/Assam Govt or private online service for task: '{query}'.
+    You are an expert Autonomous Cyber Cafe AI Assistant. 
+    The user wants help with: '{query}'.
     
-    Examples:
-    - aadhaar / addhar card -> https://myaadhaar.uidai.gov.in
-    - pan card -> https://www.protean-tinpan.com
-    - shg / asrlms -> https://asrlms.assam.gov.in
-    - sewa setu -> https://sewasetu.assam.gov.in
-    - basundhara -> https://basundhara.assam.gov.in
-    - seba / hslc -> https://site.sebaonline.org
+    Analyze the user's intent carefully:
+    1. If the user's input is too vague, incomplete, or missing specific details (e.g., just "aadhaar card", "pan card", "loan"), DO NOT send them to a website yet. Instead, ask them 1-2 clarifying questions to gather their exact requirement and details (like name, purpose, mobile number).
+    2. If the user's input has clear intent and details, provide the exact direct official working portal URL and actionable steps.
     
-    Output ONLY a valid JSON object. No explanations, no markdown tags.
-    {{"url": "https://exact-official-website-url.gov.in", "instruction": "Action guidance"}}
+    Return ONLY a valid JSON object in this exact format:
+    {{
+      "is_ready": false, 
+      "url": "", 
+      "message": "Aap Aadhaar card me kya karna chahte hain? Naya banwana hai ya address update karna hai? Kripya detail dein."
+    }}
+    OR if ready:
+    {{
+      "is_ready": true, 
+      "url": "https://myaadhaar.uidai.gov.in", 
+      "message": "Aadhaar official portal loaded. Kripya apna Aadhaar number aur OTP enter karein."
+    }}
     """
 
     try:
@@ -45,41 +50,25 @@ def execute_task(request: UserTaskRequest):
             model='gemini-2.5-flash',
             contents=prompt,
             config=types.GenerateContentConfig(
-                response_mime_type="application/json"  # Enforces pure JSON output from Gemini
+                response_mime_type="application/json"
             )
         )
         
-        clean_text = response.text.strip()
-        ai_data = json.loads(clean_text)
-        
-        target_url = ai_data.get("url", "").strip()
-        ai_instruction = ai_data.get("instruction", f"Portal loaded for {query}.")
-
-        # If AI returns empty URL, extract URL using Regex
-        if not target_url.startswith("http"):
-            urls = re.findall(r'https?://[^\s"]+', response.text)
-            target_url = urls[0] if urls else "https://myaadhaar.uidai.gov.in"
+        ai_data = json.loads(response.text.strip())
+        is_ready = ai_data.get("is_ready", False)
+        target_url = ai_data.get("url", "")
+        message = ai_data.get("message", "Kripya apne kaam ki poori detail dein.")
 
     except Exception as e:
-        # Emergency intelligent fallback (No Google Search Result redirect)
-        q_lower = query.lower()
-        if "aadhaar" in q_lower or "addhar" in q_lower or "uidai" in q_lower:
-            target_url = "https://myaadhaar.uidai.gov.in"
-        elif "pan" in q_lower:
-            target_url = "https://www.protean-tinpan.com"
-        elif "basundhara" in q_lower or "land" in q_lower:
-            target_url = "https://basundhara.assam.gov.in"
-        elif "seba" in q_lower:
-            target_url = "https://site.sebaonline.org"
-        else:
-            target_url = "https://sewasetu.assam.gov.in"
-            
-        ai_instruction = f"Opening official portal for {query}..."
+        is_ready = False
+        target_url = ""
+        message = f"Maine aapka sawaal '{query}' suna. Kripya thoda aur detail me batayein ki aapko exactly kya karwana hai?"
 
     return {
         "status": "success",
+        "is_ready": is_ready,
         "url": target_url,
-        "message": ai_instruction
+        "message": message
     }
 
 if __name__ == "__main__":
