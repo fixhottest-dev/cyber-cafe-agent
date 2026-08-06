@@ -3,9 +3,8 @@ import json
 from fastapi import FastAPI
 from pydantic import BaseModel
 from google import genai
-from google.genai import types
 
-app = FastAPI(title="Conversational AI Agent Backend")
+app = FastAPI(title="AI Cyber Cafe Agent Backend")
 
 GENAI_API_KEY = os.getenv("GEMINI_API_KEY", "YOUR_GEMINI_API_KEY")
 ai_client = genai.Client(api_key=GENAI_API_KEY)
@@ -16,53 +15,57 @@ class UserTaskRequest(BaseModel):
 
 @app.get("/")
 def home():
-    return {"status": "online", "message": "Conversational AI Agent Active"}
+    return {"status": "online", "message": "Backend Server Ready"}
 
 @app.post("/execute-agent")
 def execute_task(request: UserTaskRequest):
     query = request.user_query
+    q = query.lower()
 
-    # Conversational Agent Prompt - Expecting intake reasoning or final action
-    prompt = f"""
-    You are an expert Autonomous Cyber Cafe AI Assistant. 
-    The user wants help with: '{query}'.
-    
-    Analyze the user's intent carefully:
-    1. If the user's input is too vague, incomplete, or missing specific details (e.g., just "aadhaar card", "pan card", "loan"), DO NOT send them to a website yet. Instead, ask them 1-2 clarifying questions to gather their exact requirement and details (like name, purpose, mobile number).
-    2. If the user's input has clear intent and details, provide the exact direct official working portal URL and actionable steps.
-    
-    Return ONLY a valid JSON object in this exact format:
-    {{
-      "is_ready": false, 
-      "url": "", 
-      "message": "Aap Aadhaar card me kya karna chahte hain? Naya banwana hai ya address update karna hai? Kripya detail dein."
-    }}
-    OR if ready:
-    {{
-      "is_ready": true, 
-      "url": "https://myaadhaar.uidai.gov.in", 
-      "message": "Aadhaar official portal loaded. Kripya apna Aadhaar number aur OTP enter karein."
-    }}
-    """
+    # Direct Dynamic Intent Mapping Matrix
+    target_url = ""
+    is_ready = True
+    message = "Opening requested portal..."
 
-    try:
-        response = ai_client.models.generate_content(
-            model='gemini-2.5-flash',
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json"
+    if "pan" in q:
+        target_url = "https://www.protean-tinpan.com"
+        message = "Opening PAN Card application portal..."
+    elif "aadhaar" in q or "addhar" in q or "uidai" in q:
+        target_url = "https://myaadhaar.uidai.gov.in"
+        message = "Opening official myAadhaar portal..."
+    elif "seba" in q or "hslc" in q or "admit" in q:
+        target_url = "https://site.sebaonline.org"
+        message = "Opening SEBA Assam portal..."
+    elif "basundhara" in q or "land" in q or "mutation" in q or "jamabandi" in q:
+        target_url = "https://basundhara.assam.gov.in"
+        message = "Opening Mission Basundhara portal..."
+    elif "shg" in q or "asrlms" in q or "nrlm" in q:
+        target_url = "https://asrlms.assam.gov.in"
+        message = "Opening Assam State Rural Livelihoods Mission portal..."
+    elif "income" in q or "prc" in q or "caste" in q or "sewa" in q:
+        target_url = "https://sewasetu.assam.gov.in"
+        message = "Opening Sewa Setu Assam portal..."
+    elif "voter" in q or "epic" in q:
+        target_url = "https://voters.eci.gov.in"
+        message = "Opening Voter Services portal..."
+    elif "pf" in q or "epf" in q or "uan" in q:
+        target_url = "https://unifiedportal-mem.epfindia.gov.in/memberinterface/"
+        message = "Opening EPFO Member portal..."
+    else:
+        # Fallback using Gemini Model 1.5 Flash
+        try:
+            prompt = f"Give the direct official website URL for Indian service: '{query}'. Output ONLY valid JSON: {{\"url\": \"https://...\", \"message\": \"Success\"}}"
+            response = ai_client.models.generate_content(
+                model='gemini-1.5-flash',
+                contents=prompt
             )
-        )
-        
-        ai_data = json.loads(response.text.strip())
-        is_ready = ai_data.get("is_ready", False)
-        target_url = ai_data.get("url", "")
-        message = ai_data.get("message", "Kripya apne kaam ki poori detail dein.")
-
-    except Exception as e:
-        is_ready = False
-        target_url = ""
-        message = f"Maine aapka sawaal '{query}' suna. Kripya thoda aur detail me batayein ki aapko exactly kya karwana hai?"
+            text = response.text.replace("```json", "").replace("```", "").strip()
+            data = json.loads(text)
+            target_url = data.get("url", "https://sewasetu.assam.gov.in")
+            message = "Opening official website..."
+        except Exception as e:
+            target_url = f"https://www.google.com/search?q={query}+official+website"
+            message = f"Searching official portal for {query}..."
 
     return {
         "status": "success",
