@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 from google import genai
 
-app = FastAPI(title="Cyber Cafe AI Agent Backend")
+app = FastAPI(title="Dynamic AI Agent Backend")
 
 GENAI_API_KEY = os.getenv("GEMINI_API_KEY", "YOUR_GEMINI_API_KEY")
 ai_client = genai.Client(api_key=GENAI_API_KEY)
@@ -15,49 +15,40 @@ class UserTaskRequest(BaseModel):
 
 @app.get("/")
 def home():
-    return {"status": "online", "message": "Cyber Cafe AI Agent Live!"}
+    return {"status": "online", "message": "Truly Autonomous AI Agent is Active!"}
 
 @app.post("/execute-agent")
 def execute_task(request: UserTaskRequest):
     query = request.user_query
-    q_lower = query.lower()
 
-    # 1. Hardcoded High-Precision Direct Routing (Bypasses Google Search)
-    target_url = ""
+    # Truly Independent AI Reasoning - No hardcoded URLs
+    prompt = f"""
+    You are an autonomous AI Navigation Agent for Indian & Assam State online services.
+    The user wants to perform this task: '{query}'.
     
-    if "pan" in q_lower:
-        target_url = "https://www.protean-tinpan.com"
-    elif "seba" in q_lower or "hslc" in q_lower or "admit card" in q_lower:
-        target_url = "https://site.sebaonline.org"
-    elif "sewa" in q_lower or "income" in q_lower or "prc" in q_lower or "caste" in q_lower:
-        target_url = "https://sewasetu.assam.gov.in"
-    elif "basundhara" in q_lower or "land" in q_lower or "mutation" in q_lower or "jamabandi" in q_lower:
-        target_url = "https://basundhara.assam.gov.in"
-    elif "aadhaar" in q_lower or "uidai" in q_lower:
-        target_url = "https://myaadhaar.uidai.gov.in"
-    elif "pf" in q_lower or "epf" in q_lower or "uan" in q_lower:
-        target_url = "https://unifiedportal-mem.epfindia.gov.in/memberinterface/"
-    elif "voter" in q_lower or "epic" in q_lower:
-        target_url = "https://voters.eci.gov.in"
-    elif "passport" in q_lower:
-        target_url = "https://www.passportindia.gov.in"
-    elif "driving" in q_lower or "parivahan" in q_lower or "dl" in q_lower:
-        target_url = "https://parivahan.gov.in"
-    else:
-        # Fallback to direct SEBA / Sewa Setu official portal instead of Google
-        target_url = "https://sewasetu.assam.gov.in"
+    Find or infer the most accurate official working website URL for this task (e.g. for SHG it might be https://nrlm.gov.in or https://asrlms.assam.gov.in).
+    If it's an educational board, land service, bank, or welfare scheme, give its direct portal URL.
+    
+    Return ONLY a valid JSON object in this exact format:
+    {{"url": "https://exact-official-website-url.gov.in", "instruction": "Actionable guidance for user in simple Hindi-English"}}
+    """
 
-    # 2. AI Guidance Prompt
-    prompt = f"Provide 2 short action steps in Hindi-English for user applying/accessing '{query}' on official website."
-    
     try:
         response = ai_client.models.generate_content(
             model='gemini-2.5-flash',
             contents=prompt
         )
-        ai_instruction = response.text
-    except Exception:
-        ai_instruction = "Official Portal loaded. Proceed with online form registration."
+        # Parse JSON output from Gemini AI
+        clean_text = response.text.replace("```json", "").replace("```", "").strip()
+        ai_data = json.loads(clean_text)
+        
+        target_url = ai_data.get("url", "https://www.google.com")
+        ai_instruction = ai_data.get("instruction", f"Portal for {query} loaded successfully.")
+
+    except Exception as e:
+        # Emergency Fallback to direct official Google Search query if AI parsing fails
+        target_url = f"https://www.google.com/search?q={query}+official+portal+apply+online"
+        ai_instruction = f"Search portal loaded for {query}."
 
     return {
         "status": "success",
