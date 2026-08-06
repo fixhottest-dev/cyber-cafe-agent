@@ -1,6 +1,4 @@
 fastapi
 uvicorn
-selenium
-webdriver-manager
 google-genai
 pydantic
